@@ -53,6 +53,7 @@ class Pilothouse:  # pylint:disable=too-many-instance-attributes
         self.thread = Thread(target=self.run_thread)
         self.thread.start()
         self._current_instruction_timed = 0
+        self._handbrake: bool = False
 
     def _init_gpio(self) -> None:
         GPIO.setmode(GPIO.BCM)
@@ -71,10 +72,27 @@ class Pilothouse:  # pylint:disable=too-many-instance-attributes
         while not self._stop:
             self.event.wait()
             instruction = self._queue.get()
+            if self._handbrake:
+                self._handbrake = False
             self.change_speed(**instruction)
             if self._queue.empty():
                 # there is another instruction - start doing it
                 self.event.clear()
+
+    def queue_change(self, speed: int, timed: int = 0) -> None:
+        """
+        Queue another colejorz event.
+
+        .. note::
+
+            To clear queue and stop the train, request to run at 0 indefinitely.
+        """
+        if speed == 0 and timed == 0:
+            with self._queue.mutex:
+                self._queue.queue.clear()
+            self._handbrake = True
+        self._queue.put({'speed': speed, 'timed': timed})
+        self.event.set()
 
     def change_speed(self, speed: int, timed: int = 0) -> None:
         """Change the state of the train."""
@@ -130,11 +148,12 @@ class Pilothouse:  # pylint:disable=too-many-instance-attributes
             stop_at = time() + timed
             while stop_at > time():
                 self._current_instruction_timed = int(stop_at - time())
-                if not self._queue.empty():
+                if self._handbrake:
                     # new instruction - stop doing this one, and exit
                     return True
                 sleep(0.2)
-            self.change_speed(0)
+            if self._queue.empty():
+                self.change_speed(0)
             return False
         return True
 

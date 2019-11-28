@@ -29,8 +29,7 @@ class StationMaster:
 
     def change_state(self, level: int, timed: int = 0) -> None:
         """Request state change (speed and direction)."""
-        self._queue.put({'speed': level, 'timed': timed})
-        self._pilothouse.event.set()
+        self._pilothouse.queue_change(level, timed)
 
     def exit(self) -> None:
         """Exit the Stationmaster."""
